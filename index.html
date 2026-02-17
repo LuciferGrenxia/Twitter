@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>X Clone (Vox Persistence Server)</title>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+
+    <style>
+        :root {
+            --bg: #ffffff; --text: #0f1419; --border: #eff3f4; --blue: #1d9bf0;
+            --hover: rgba(15, 20, 25, 0.1); --dim: #536471; --green: #00ba7c; --red: #f91880;
+        }
+        [data-theme="dark"] {
+            --bg: #000000; --text: #e7e9ea; --border: #2f3336; --blue: #1d9bf0;
+            --hover: rgba(231, 233, 234, 0.1); --dim: #71767b; --green: #00ba7c; --red: #f91880;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
+        body { background: var(--bg); color: var(--text); overflow-x: hidden; transition: 0.3s; }
+        .app-container { display: flex; max-width: 1250px; margin: 0 auto; min-height: 100vh; }
+        nav { width: 275px; padding: 20px; border-right: 1px solid var(--border); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 10px; }
+        .nav-link { display: flex; align-items: center; gap: 20px; padding: 12px; border-radius: 30px; cursor: pointer; font-size: 20px; }
+        main { flex: 1; max-width: 600px; border-right: 1px solid var(--border); min-height: 100vh; position: relative; }
+        header { position: sticky; top: 0; background: var(--bg); opacity: 0.95; backdrop-filter: blur(12px); padding: 16px; border-bottom: 1px solid var(--border); z-index: 50; font-weight: bold; font-size: 20px; display: flex; align-items: center; gap: 15px; }
+
+        /* [게시물 & 스레드 연결선] */
+        .post-card { padding: 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; cursor: pointer; position: relative; }
+        .avatar { width: 48px; height: 48px; border-radius: 50%; background: #333; background-size: cover; background-position: center; flex-shrink: 0; z-index: 2; position: relative; }
+        .thread-line { position: absolute; left: 39px; top: 0; bottom: 0; width: 2px; background: #cfd9de; z-index: 1; display: none; }
+        [data-theme="dark"] .thread-line { background: #333639; }
+        .is-thread .thread-line { display: block; }
+        .thread-start .thread-line { top: 64px; }
+        .thread-end .thread-line { height: 40px; }
+
+        /* [디엠 (오른쪽 파란색 고정)] */
+        .chat-box { height: calc(100vh - 130px); overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 15px; }
+        .msg-container { position: relative; max-width: 80%; display: flex; flex-direction: column; }
+        .msg-me { align-self: flex-end; align-items: flex-end; }
+        .msg-you { align-self: flex-start; align-items: flex-start; }
+        .bubble { padding: 10px 16px; border-radius: 20px; font-size: 15px; line-height: 1.4; }
+        .me-bubble { background: var(--blue) !important; color: white !important; border-bottom-right-radius: 4px !important; }
+        .you-bubble { background: var(--border) !important; color: var(--text) !important; border-bottom-left-radius: 4px !important; }
+        .msg-time { font-size: 10px; color: var(--dim); margin-top: 4px; }
+
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; z-index: 3000; align-items: center; justify-content: center; padding: 20px; }
+        .modal-content { background: var(--bg); width: 100%; max-width: 600px; border-radius: 20px; padding: 20px; border: 1px solid var(--border); max-height: 95vh; overflow-y: auto; }
+        .section { display: none; } .section.active { display: block; }
+        .post-btn-float { position: fixed; bottom: 75px; right: 20px; background: var(--blue); width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; border: none; z-index: 100; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body data-theme="light">
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar(false)"></div>
+    <div class="sidebar-drawer" id="sidebar-drawer" style="position:fixed; left:-280px; top:0; width:280px; height:100%; background:var(--bg); transition:0.3s; z-index:2001; padding:20px; border-right:1px solid var(--border); overflow-y:auto;">
+        <h2 style="margin-bottom:20px;">계정 전환</h2>
+        <div id="account-list"></div>
+        <hr style="border: 0.5px solid var(--border); margin: 20px 0;">
+        <div onclick="toggleTheme()" style="padding:15px 0; cursor:pointer;"><i data-lucide="moon"></i> <span id="theme-text">밤 모드 켜기</span></div>
+        <div onclick="localStorage.clear(); location.reload();" style="padding:15px 0; cursor:pointer;"><i data-lucide="trash-2"></i> 데이터 초기화</div>
+    </div>
+
+    <div class="app-container">
+        <nav>
+            <div class="nav-link" onclick="toggleSidebar(true)"><i data-lucide="menu"></i></div>
+            <div class="nav-link active" onclick="switchTab('home')"><i data-lucide="home"></i> <span>홈</span></div>
+            <div class="nav-link" onclick="switchTab('dm')"><i data-lucide="mail"></i> <span>쪽지</span></div>
+            <div class="nav-link" onclick="switchTab('profile')"><i data-lucide="user"></i> <span>프로필</span></div>
+        </nav>
+        <main>
+            <header><i data-lucide="arrow-left" id="back-btn" style="display:none; cursor:pointer;" onclick="goBack()"></i><span id="page-header-title">홈</span></header>
+            <div id="home-section" class="section active"><div id="main-feed-area"></div></div>
+            <div id="dm-section" class="section"><div id="dm-content-area"></div></div>
+            <div id="profile-section" class="section">
+                <div class="profile-banner" id="p-header-bg"></div>
+                <div class="profile-info" style="padding: 15px; position: relative; border-bottom: 1px solid var(--border);">
+                    <div class="profile-avatar" id="p-avatar-bg"></div>
+                    <div id="profile-action-area"></div>
+                    <div style="margin-top:50px;"><h2 id="u-name-display"></h2><p id="u-handle-display" style="color:var(--dim)"></p><p id="u-bio-display" style="margin-top:12px;"></p></div>
+                </div>
+                <div class="tab-row"><div class="tab active" onclick="switchProfileTab('tweets', this)">트윗</div><div class="tab" onclick="switchProfileTab('replies', this)">답글</div><div class="tab" onclick="switchProfileTab('likes', this)">마음에 들어요</div></div>
+                <div id="profile-feed-area"></div>
+            </div>
+            <div id="detail-section" class="section"><div id="detail-area"></div><div id="reply-list-area"></div></div>
+        </main>
+    </div>
+    <button class="post-btn-float" onclick="openModal('post')"><i data-lucide="plus"></i></button>
+
+    <div id="modal" class="modal-overlay" onclick="closeModal()"><div class="modal-content" onclick="event.stopPropagation()">
+        <div style="display:flex; justify-content:space-between; margin-bottom:15px; align-items:center;"><i data-lucide="x" onclick="closeModal()" style="cursor:pointer"></i><button id="modal-btn" style="background:var(--blue); color:white; border:none; padding:8px 20px; border-radius:30px; font-weight:bold;">전송</button></div>
+        <div id="modal-body"></div>
+    </div></div>
+
+    <script>
+        // [서버 주소 설정] 네가 찾은 주소를 이미 넣어뒀어!
+        const firebaseConfig = {
+            databaseURL: "https://twitter-64edc-default-rtdb.firebaseio.com/",
+            projectId: "twitter-64edc"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const STORAGE_KEY = 'vox_server_final_v1';
+        const getFullTime = () => {
+            const d = new Date();
+            return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+        };
+
+        let state = {
+            theme: 'light', currentAccIdx: 0,
+            accounts: [
+                { id: 0, name: "재희", handle: "Jaehee_Kim", bio: "Artist / Admin", avatar: "", header: "" },
+                { id: 1, name: "Alastor", handle: "RadioDemon", bio: "Smile!", avatar: "", header: "" },
+                { id: 2, name: "Vox", handle: "TV_Demon", bio: "Trust me!", avatar: "", header: "" }
+            ],
+            posts: [], dms: [], activeTab: 'home', activeProfileTab: 'tweets'
+        };
+
+        // 서버에서 데이터 가져오기
+        db.ref('vox_data').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (data) { state = data; render(); }
+        });
+
+        const save = () => {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            db.ref('vox_data').set(state); // 실시간 서버 저장
+        };
+
+        function render() {
+            const me = state.accounts[state.currentAccIdx];
+            document.body.setAttribute('data-theme', state.theme);
+            const title = document.getElementById('page-header-title');
+            
+            // 사이드바 계정 리스트
+            document.getElementById('account-list').innerHTML = state.accounts.map((acc, i) => `
+                <div class="acc-item ${i === state.currentAccIdx ? 'acc-active' : ''}" onclick="switchAccount(${i})">
+                    <div class="avatar" style="background-image:url(${acc.avatar})"></div>
+                    <div><b>${acc.name}</b><br><span style="color:var(--dim)">@${acc.handle}</span></div>
+                </div>`).join('');
+
+            if (state.detailId) {
+                const p = state.posts.find(x => x.id === state.detailId);
+                document.getElementById('detail-area').innerHTML = generatePostHTML(p, true);
+                document.getElementById('reply-list-area').innerHTML = state.posts.filter(x => x.replyTo === state.detailId).map(r => generatePostHTML(r, false, false, true, true)).join('');
+            } else if (state.activeTab === 'home') {
+                title.innerText = '홈';
+                const roots = state.posts.filter(p => !p.isReply);
+                let sortedFeed = [];
+                roots.forEach(root => {
+                    const replies = state.posts.filter(p => p.replyTo === root.id);
+                    sortedFeed.push(generatePostHTML(root, false, replies.length > 0));
+                    replies.forEach((r, idx) => sortedFeed.push(generatePostHTML(r, false, false, true, idx === replies.length - 1)));
+                });
+                document.getElementById('main-feed-area').innerHTML = sortedFeed.join('');
+            } else if (state.activeTab === 'dm') {
+                const dmArea = document.getElementById('dm-content-area');
+                if (state.activeChatPair) {
+                    const chat = state.dms.find(d => JSON.stringify(d.pair) === JSON.stringify(state.activeChatPair.sort((a,b)=>a-b))) || {messages:[]};
+                    const other = state.accounts[state.activeChatPair.find(id => id !== state.currentAccIdx)];
+                    title.innerText = other.name;
+                    dmArea.innerHTML = `<div class="chat-box">
+                        <div style="text-align:center; padding:20px 0;"><div class="avatar" style="width:64px; height:64px; margin:0 auto 10px; background-image:url(${other.avatar})"></div><b>${other.name}</b></div>
+                        ${chat.messages.map((m, idx) => `<div class="msg-container ${m.s===me.name?'msg-me':'msg-you'}"><div class="bubble ${m.s===me.name?'me-bubble':'you-bubble'}">${m.t}</div><div class="msg-time">${m.time}</div></div>`).join('')}
+                        </div><div style="padding:15px; border-top:1px solid var(--border); display:flex; gap:10px;"><input id="dm-input" style="flex:1; background:var(--hover); border:none; color:var(--text); padding:10px; border-radius:20px; outline:none;" placeholder="Message"><i data-lucide="send" onclick="sendDM()" style="cursor:pointer; color:var(--blue)"></i></div>`;
+                } else {
+                    title.innerText = '쪽지';
+                    dmArea.innerHTML = state.accounts.filter(a => a.id !== me.id).map(acc => {
+                        const chat = state.dms.find(d => d.pair.includes(me.id) && d.pair.includes(acc.id));
+                        return `<div class="dm-item" onclick="enterChat([${me.id}, ${acc.id}])"><div class="avatar" style="background-image:url(${acc.avatar})"></div><div class="dm-info"><b>${acc.name}</b><div class="dm-preview">${chat && chat.messages.length > 0 ? chat.messages[chat.messages.length-1].t : "대화를 시작해보세요"}</div></div></div>`;
+                    }).join('');
+                }
+            } else if (state.activeTab === 'profile') {
+                document.getElementById('p-header-bg').style.backgroundImage = `url(${me.header})`;
+                document.getElementById('p-avatar-bg').style.backgroundImage = `url(${me.avatar})`;
+                document.getElementById('u-name-display').innerText = me.name;
+                document.getElementById('u-handle-display').innerText = '@' + me.handle;
+                document.getElementById('u-bio-display').innerText = me.bio;
+                document.getElementById('profile-action-area').innerHTML = `<button onclick="openModal('settings')" style="float:right; border:1px solid var(--border); background:none; color:var(--text); padding:8px 16px; border-radius:20px; font-weight:bold; margin-top:10px;">수정</button>`;
+                let filtered = state.activeProfileTab === 'tweets' ? state.posts.filter(p => p.accId === me.id && !p.isReply) : state.posts.filter(p => p.accId === me.id);
+                document.getElementById('profile-feed-area').innerHTML = filtered.map(p => generatePostHTML(p)).join('');
+            }
+            lucide.createIcons();
+        }
+
+        function generatePostHTML(p, isDetail = false, isStart = false, isReply = false, isEnd = false) {
+            const acc = state.accounts[p.accId] || {name:"Ghost", handle:"ghost", avatar:""};
+            const isLiked = p.likes.includes(state.currentAccIdx);
+            const isRTed = p.reposts?.includes(state.currentAccIdx);
+            let threadClass = (isStart ? 'thread-start is-thread' : (isReply ? (isEnd ? 'thread-end is-thread' : 'is-thread') : 'no-thread'));
+
+            return `<div class="post-card ${threadClass}" onclick="${!isDetail ? `showDetail(${p.id})` : ''}">
+                <div class="thread-line"></div>
+                <div class="avatar" style="background-image:url(${acc.avatar})"></div>
+                <div style="flex:1; z-index:2;">
+                    <div><b>${acc.name}</b> <span style="color:var(--dim)">@${acc.handle} · 방금</span></div>
+                    ${p.isReply && !isDetail ? `<div style="color:var(--dim); font-size:13px;">Replying to @${(state.posts.find(x=>x.id===p.replyTo) || {handle:'ghost'}).handle}</div>` : ''}
+                    <div style="margin:10px 0; font-size:15px; line-height:1.4">${p.content}</div>
+                    ${p.quote ? `<div class="quote-box"><b>@${p.quote.handle}</b><br>${p.quote.content}</div>` : ''}
+                    <div class="post-actions" onclick="event.stopPropagation()">
+                        <i data-lucide="message-circle" onclick="openModal('reply', ${p.id})"></i>
+                        <span class="${isRTed?'active-rt':''}" onclick="toggleRT(${p.id})"><i data-lucide="repeat"></i> ${p.reposts?.length || 0}</span>
+                        <span class="${isLiked?'active-like':''}" onclick="toggleLike(${p.id})"><i data-lucide="heart" style="${isLiked?'fill:var(--red)':''}"></i> ${p.likes.length}</span>
+                        <i data-lucide="share" onclick="saveAsImage(${p.id})"></i>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function openModal(type, targetId = null) {
+            const me = state.accounts[state.currentAccIdx];
+            const body = document.getElementById('modal-body'); const btn = document.getElementById('modal-btn');
+            const target = targetId ? state.posts.find(x => x.id === targetId) : null;
+            document.getElementById('modal').style.display = 'flex';
+            if (type === 'settings') {
+                body.innerHTML = `이름 <input id="set-n" value="${me.name}" style="width:100%; margin-bottom:10px; padding:8px;">아이디 <input id="set-h" value="${me.handle}" style="width:100%; margin-bottom:10px; padding:8px;">헤더/프사 수정 <input type="file" onchange="initCrop(this.files[0])"><div id="crop-wrap" style="display:none;"><div class="crop-area"><img id="crop-target"></div></div>`;
+                btn.onclick = () => {
+                    me.name = document.getElementById('set-n').value; me.handle = document.getElementById('set-h').value;
+                    if(cropper) me.avatar = cropper.getCroppedCanvas().toDataURL();
+                    closeModal(); save();
+                };
+            } else {
+                const targetHandle = target ? state.accounts[target.accId].handle : 'ghost'; // undefined 해결
+                body.innerHTML = `<textarea id="m-input" rows="5" style="width:100%; border:none; outline:none; font-size:20px; background:none; color:var(--text);"></textarea>${type==='quote'?`<div class="quote-box">@${targetHandle}: ${target.content}</div>`:''}`;
+                btn.onclick = () => {
+                    const val = document.getElementById('m-input').value;
+                    state.posts.unshift({ id: Date.now(), accId: state.currentAccIdx, handle: me.handle, content: val, likes:[], reposts:[], time: getFullTime(), isReply: type==='reply', replyTo: type==='reply'?targetId:null, quote: type==='quote'?{handle:targetHandle, content:target.content}:null });
+                    closeModal(); save();
+                };
+            }
+            lucide.createIcons();
+        }
+
+        function initCrop(f) { const r = new FileReader(); r.onload = (e) => { document.getElementById('crop-target').src = e.target.result; document.getElementById('crop-wrap').style.display='block'; if(cropper) cropper.destroy(); cropper = new Cropper(document.getElementById('crop-target'), {aspectRatio:1/1}); }; r.readAsDataURL(f); }
+        function switchAccount(idx) { state.currentAccIdx = idx; toggleSidebar(false); render(); }
+        function toggleLike(id) { const p = state.posts.find(x => x.id === id); const idx = p.likes.indexOf(state.currentAccIdx); if(idx>-1) p.likes.splice(idx,1); else p.likes.push(state.currentAccIdx); save(); }
+        function toggleRT(id) { const p = state.posts.find(x => x.id === id); if(!p.reposts) p.reposts = []; const idx = p.reposts.indexOf(state.currentAccIdx); if(idx>-1) p.reposts.splice(idx,1); else p.reposts.push(state.currentAccIdx); save(); }
+        function enterChat(pair) { state.activeChatPair = pair.sort((a,b)=>a-b); if(!state.dms.find(d=>JSON.stringify(d.pair)===JSON.stringify(state.activeChatPair))) state.dms.push({pair:state.activeChatPair, messages:[]}); render(); }
+        function sendDM() { const chat = state.dms.find(d => JSON.stringify(d.pair) === JSON.stringify(state.activeChatPair)); chat.messages.push({ s: state.accounts[state.currentAccIdx].name, t: document.getElementById('dm-input').value, time: getFullTime() }); save(); }
+        function switchTab(t) { state.activeTab = t; state.detailId = null; state.activeChatPair = null; document.querySelectorAll('.section').forEach(s => s.classList.remove('active')); document.getElementById(`${t}-section`).classList.add('active'); render(); }
+        function switchProfileTab(t, el) { state.activeProfileTab = t; document.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); el.classList.add('active'); render(); }
+        function showDetail(id) { state.detailId = id; document.querySelectorAll('.section').forEach(s => s.classList.remove('active')); document.getElementById('detail-section').classList.add('active'); render(); }
+        function goBack() { state.detailId = null; state.activeChatPair = null; switchTab(state.activeTab); }
+        function toggleSidebar(o) { document.getElementById('sidebar-overlay').style.display = o?'block':'none'; document.getElementById('sidebar-drawer').style.left = o?'0':'-280px'; }
+        function toggleTheme() { state.theme = state.theme === 'light' ? 'dark' : 'light'; save(); }
+        function closeModal() { document.getElementById('modal').style.display = 'none'; if(cropper){cropper.destroy(); cropper=null;} }
+        function saveAsImage(id) { html2canvas(document.body).then(c => { const a = document.createElement('a'); a.href=c.toDataURL(); a.download='vox.png'; a.click(); }); }
+        window.onload = render;
+    </script>
+</body>
+</html>
