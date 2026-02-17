@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>X Clone (Vox Persistence Server)</title>
+    <title>X Clone (Vox God Persistence)</title>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
@@ -23,12 +23,17 @@
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: -apple-system, sans-serif; }
         body { background: var(--bg); color: var(--text); overflow-x: hidden; transition: 0.3s; }
         .app-container { display: flex; max-width: 1250px; margin: 0 auto; min-height: 100vh; }
+        
+        /* [네비게이션 & 사이드바 고정] */
+        .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; z-index: 2000; }
+        .sidebar-drawer { position: fixed; left: -280px; top: 0; width: 280px; height: 100%; background: var(--bg); transition: 0.3s ease-in-out; z-index: 2001; padding: 20px; border-right: 1px solid var(--border); overflow-y: auto; }
         nav { width: 275px; padding: 20px; border-right: 1px solid var(--border); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 10px; }
         .nav-link { display: flex; align-items: center; gap: 20px; padding: 12px; border-radius: 30px; cursor: pointer; font-size: 20px; }
+        
         main { flex: 1; max-width: 600px; border-right: 1px solid var(--border); min-height: 100vh; position: relative; }
         header { position: sticky; top: 0; background: var(--bg); opacity: 0.95; backdrop-filter: blur(12px); padding: 16px; border-bottom: 1px solid var(--border); z-index: 50; font-weight: bold; font-size: 20px; display: flex; align-items: center; gap: 15px; }
 
-        /* [게시물 & 스레드 연결선] */
+        /* [게시물 & 스레드] */
         .post-card { padding: 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; cursor: pointer; position: relative; }
         .avatar { width: 48px; height: 48px; border-radius: 50%; background: #333; background-size: cover; background-position: center; flex-shrink: 0; z-index: 2; position: relative; }
         .thread-line { position: absolute; left: 39px; top: 0; bottom: 0; width: 2px; background: #cfd9de; z-index: 1; display: none; }
@@ -37,7 +42,12 @@
         .thread-start .thread-line { top: 64px; }
         .thread-end .thread-line { height: 40px; }
 
-        /* [디엠 (오른쪽 파란색 고정)] */
+        /* [디엠 리스트 & 채팅창 완벽 재현] */
+        .dm-item { padding: 16px; display: flex; gap: 12px; border-bottom: 1px solid var(--border); cursor: pointer; align-items: center; }
+        .dm-info { flex: 1; min-width: 0; }
+        .dm-header { display: flex; justify-content: space-between; align-items: center; }
+        .dm-preview { color: var(--dim); font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+        
         .chat-box { height: calc(100vh - 130px); overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 15px; }
         .msg-container { position: relative; max-width: 80%; display: flex; flex-direction: column; }
         .msg-me { align-self: flex-end; align-items: flex-end; }
@@ -51,11 +61,17 @@
         .modal-content { background: var(--bg); width: 100%; max-width: 600px; border-radius: 20px; padding: 20px; border: 1px solid var(--border); max-height: 95vh; overflow-y: auto; }
         .section { display: none; } .section.active { display: block; }
         .post-btn-float { position: fixed; bottom: 75px; right: 20px; background: var(--blue); width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; border: none; z-index: 100; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+
+        @media (max-width: 500px) {
+            nav { position: fixed; bottom: 0; width: 100%; height: 55px; flex-direction: row; border-top: 1px solid var(--border); background: var(--bg); justify-content: space-around; z-index: 100; border-right: none; padding: 0; }
+            .nav-link span { display: none; }
+            main { max-width: 100%; margin-bottom: 55px; border: none; }
+        }
     </style>
 </head>
 <body data-theme="light">
     <div class="sidebar-overlay" id="sidebar-overlay" onclick="toggleSidebar(false)"></div>
-    <div class="sidebar-drawer" id="sidebar-drawer" style="position:fixed; left:-280px; top:0; width:280px; height:100%; background:var(--bg); transition:0.3s; z-index:2001; padding:20px; border-right:1px solid var(--border); overflow-y:auto;">
+    <div class="sidebar-drawer" id="sidebar-drawer">
         <h2 style="margin-bottom:20px;">계정 전환</h2>
         <div id="account-list"></div>
         <hr style="border: 0.5px solid var(--border); margin: 20px 0;">
@@ -95,7 +111,6 @@
     </div></div>
 
     <script>
-        // [서버 주소 설정] 네가 찾은 주소를 이미 넣어뒀어!
         const firebaseConfig = {
             databaseURL: "https://twitter-64edc-default-rtdb.firebaseio.com/",
             projectId: "twitter-64edc"
@@ -103,31 +118,30 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        const STORAGE_KEY = 'vox_server_final_v1';
+        const STORAGE_KEY = 'vox_final_v20';
         const getFullTime = () => {
             const d = new Date();
             return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
         };
 
         let state = {
-            theme: 'light', currentAccIdx: 0,
+            theme: 'light', currentAccIdx: 0, isSidebarOpen: false,
             accounts: [
-                { id: 0, name: "재희", handle: "Jaehee_Kim", bio: "Artist / Admin", avatar: "", header: "" },
-                { id: 1, name: "Alastor", handle: "RadioDemon", bio: "Smile!", avatar: "", header: "" },
-                { id: 2, name: "Vox", handle: "TV_Demon", bio: "Trust me!", avatar: "", header: "" }
+                { id: 0, name: "재희", handle: "Jaehee_Kim", bio: "Artist / Admin", avatar: "", header: "", joined: "January 2026" },
+                { id: 1, name: "Alastor", handle: "RadioDemon", bio: "Smile!", avatar: "", header: "", joined: "December 2022" },
+                { id: 2, name: "Vox", handle: "TV_Demon", bio: "Trust me!", avatar: "", header: "", joined: "February 2024" }
             ],
             posts: [], dms: [], activeTab: 'home', activeProfileTab: 'tweets'
         };
 
-        // 서버에서 데이터 가져오기
         db.ref('vox_data').on('value', (snapshot) => {
             const data = snapshot.val();
-            if (data) { state = data; render(); }
+            if (data) { state = {...state, ...data, isSidebarOpen: false}; render(); }
         });
 
         const save = () => {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            db.ref('vox_data').set(state); // 실시간 서버 저장
+            db.ref('vox_data').set(state);
         };
 
         function render() {
@@ -135,7 +149,8 @@
             document.body.setAttribute('data-theme', state.theme);
             const title = document.getElementById('page-header-title');
             
-            // 사이드바 계정 리스트
+            toggleSidebar(state.isSidebarOpen);
+
             document.getElementById('account-list').innerHTML = state.accounts.map((acc, i) => `
                 <div class="acc-item ${i === state.currentAccIdx ? 'acc-active' : ''}" onclick="switchAccount(${i})">
                     <div class="avatar" style="background-image:url(${acc.avatar})"></div>
@@ -163,14 +178,17 @@
                     const other = state.accounts[state.activeChatPair.find(id => id !== state.currentAccIdx)];
                     title.innerText = other.name;
                     dmArea.innerHTML = `<div class="chat-box">
-                        <div style="text-align:center; padding:20px 0;"><div class="avatar" style="width:64px; height:64px; margin:0 auto 10px; background-image:url(${other.avatar})"></div><b>${other.name}</b></div>
+                        <div style="text-align:center; padding:20px 0;"><div class="avatar" style="width:64px; height:64px; margin:0 auto 10px; background-image:url(${other.avatar})"></div><b>${other.name}</b><div style="color:var(--dim); font-size:14px;">Joined ${other.joined}</div></div>
                         ${chat.messages.map((m, idx) => `<div class="msg-container ${m.s===me.name?'msg-me':'msg-you'}"><div class="bubble ${m.s===me.name?'me-bubble':'you-bubble'}">${m.t}</div><div class="msg-time">${m.time}</div></div>`).join('')}
                         </div><div style="padding:15px; border-top:1px solid var(--border); display:flex; gap:10px;"><input id="dm-input" style="flex:1; background:var(--hover); border:none; color:var(--text); padding:10px; border-radius:20px; outline:none;" placeholder="Message"><i data-lucide="send" onclick="sendDM()" style="cursor:pointer; color:var(--blue)"></i></div>`;
                 } else {
                     title.innerText = '쪽지';
                     dmArea.innerHTML = state.accounts.filter(a => a.id !== me.id).map(acc => {
                         const chat = state.dms.find(d => d.pair.includes(me.id) && d.pair.includes(acc.id));
-                        return `<div class="dm-item" onclick="enterChat([${me.id}, ${acc.id}])"><div class="avatar" style="background-image:url(${acc.avatar})"></div><div class="dm-info"><b>${acc.name}</b><div class="dm-preview">${chat && chat.messages.length > 0 ? chat.messages[chat.messages.length-1].t : "대화를 시작해보세요"}</div></div></div>`;
+                        return `<div class="dm-item" onclick="enterChat([${me.id}, ${acc.id}])"><div class="avatar" style="background-image:url(${acc.avatar})"></div><div class="dm-info">
+                            <div class="dm-header"><b>${acc.name}</b> <span style="color:var(--dim); font-size:12px;">방금</span></div>
+                            <div class="dm-preview">${chat && chat.messages.length > 0 ? chat.messages[chat.messages.length-1].t : "쪽지를 보내보세요!"}</div>
+                        </div></div>`;
                     }).join('');
                 }
             } else if (state.activeTab === 'profile') {
@@ -197,7 +215,6 @@
                 <div class="avatar" style="background-image:url(${acc.avatar})"></div>
                 <div style="flex:1; z-index:2;">
                     <div><b>${acc.name}</b> <span style="color:var(--dim)">@${acc.handle} · 방금</span></div>
-                    ${p.isReply && !isDetail ? `<div style="color:var(--dim); font-size:13px;">Replying to @${(state.posts.find(x=>x.id===p.replyTo) || {handle:'ghost'}).handle}</div>` : ''}
                     <div style="margin:10px 0; font-size:15px; line-height:1.4">${p.content}</div>
                     ${p.quote ? `<div class="quote-box"><b>@${p.quote.handle}</b><br>${p.quote.content}</div>` : ''}
                     <div class="post-actions" onclick="event.stopPropagation()">
@@ -223,11 +240,11 @@
                     closeModal(); save();
                 };
             } else {
-                const targetHandle = target ? state.accounts[target.accId].handle : 'ghost'; // undefined 해결
+                const targetHandle = target ? state.accounts[target.accId].handle : 'ghost'; // @undefined 방지
                 body.innerHTML = `<textarea id="m-input" rows="5" style="width:100%; border:none; outline:none; font-size:20px; background:none; color:var(--text);"></textarea>${type==='quote'?`<div class="quote-box">@${targetHandle}: ${target.content}</div>`:''}`;
                 btn.onclick = () => {
                     const val = document.getElementById('m-input').value;
-                    state.posts.unshift({ id: Date.now(), accId: state.currentAccIdx, handle: me.handle, content: val, likes:[], reposts:[], time: getFullTime(), isReply: type==='reply', replyTo: type==='reply'?targetId:null, quote: type==='quote'?{handle:targetHandle, content:target.content}:null });
+                    state.posts.unshift({ id: Date.now(), accId: state.currentAccIdx, content: val, likes:[], reposts:[], time: getFullTime(), isReply: type==='reply', replyTo: type==='reply'?targetId:null, quote: type==='quote'?{handle:targetHandle, content:target.content}:null });
                     closeModal(); save();
                 };
             }
@@ -235,7 +252,7 @@
         }
 
         function initCrop(f) { const r = new FileReader(); r.onload = (e) => { document.getElementById('crop-target').src = e.target.result; document.getElementById('crop-wrap').style.display='block'; if(cropper) cropper.destroy(); cropper = new Cropper(document.getElementById('crop-target'), {aspectRatio:1/1}); }; r.readAsDataURL(f); }
-        function switchAccount(idx) { state.currentAccIdx = idx; toggleSidebar(false); render(); }
+        function switchAccount(idx) { state.currentAccIdx = idx; state.isSidebarOpen = false; render(); }
         function toggleLike(id) { const p = state.posts.find(x => x.id === id); const idx = p.likes.indexOf(state.currentAccIdx); if(idx>-1) p.likes.splice(idx,1); else p.likes.push(state.currentAccIdx); save(); }
         function toggleRT(id) { const p = state.posts.find(x => x.id === id); if(!p.reposts) p.reposts = []; const idx = p.reposts.indexOf(state.currentAccIdx); if(idx>-1) p.reposts.splice(idx,1); else p.reposts.push(state.currentAccIdx); save(); }
         function enterChat(pair) { state.activeChatPair = pair.sort((a,b)=>a-b); if(!state.dms.find(d=>JSON.stringify(d.pair)===JSON.stringify(state.activeChatPair))) state.dms.push({pair:state.activeChatPair, messages:[]}); render(); }
@@ -244,7 +261,13 @@
         function switchProfileTab(t, el) { state.activeProfileTab = t; document.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); el.classList.add('active'); render(); }
         function showDetail(id) { state.detailId = id; document.querySelectorAll('.section').forEach(s => s.classList.remove('active')); document.getElementById('detail-section').classList.add('active'); render(); }
         function goBack() { state.detailId = null; state.activeChatPair = null; switchTab(state.activeTab); }
-        function toggleSidebar(o) { document.getElementById('sidebar-overlay').style.display = o?'block':'none'; document.getElementById('sidebar-drawer').style.left = o?'0':'-280px'; }
+        
+        function toggleSidebar(o) { 
+            state.isSidebarOpen = o;
+            document.getElementById('sidebar-overlay').style.display = o ? 'block' : 'none'; 
+            document.getElementById('sidebar-drawer').style.left = o ? '0' : '-280px'; 
+        }
+        
         function toggleTheme() { state.theme = state.theme === 'light' ? 'dark' : 'light'; save(); }
         function closeModal() { document.getElementById('modal').style.display = 'none'; if(cropper){cropper.destroy(); cropper=null;} }
         function saveAsImage(id) { html2canvas(document.body).then(c => { const a = document.createElement('a'); a.href=c.toDataURL(); a.download='vox.png'; a.click(); }); }
